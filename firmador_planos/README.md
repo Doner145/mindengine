@@ -22,11 +22,17 @@ modifica: la firma se agrega como una capa encima. Requisito: el PDF debe conser
 
 ## Instalación (Windows)
 
-1. Instale Python 3.10 o superior desde https://www.python.org y marque *Add python.exe to PATH*.
-2. En una terminal, dentro de esta carpeta, ejecute:
-   ```
-   pip install -r requirements.txt
-   ```
+No hay que instalar nada. Descomprima la carpeta y haga **doble clic en `firmar.bat`**.
+
+La primera vez, el programa descarga un Python portable (unos 60 MB) en la subcarpeta `python\`
+junto con las librerías. No toca la instalación de Windows ni pide permisos de administrador.
+Las siguientes veces arranca directo.
+
+- Si Windows muestra *"Windows protegió su PC"*, pulse **Más información → Ejecutar de todas formas**
+  (ocurre con los `.bat` descargados de internet).
+- Si la empresa usa proxy, la descarga necesita acceso a `www.python.org`, `bootstrap.pypa.io`,
+  `pypi.org` y `files.pythonhosted.org`.
+- Para reinstalar desde cero, borre la carpeta `python\`.
 
 ## Estructura de carpetas
 
@@ -34,7 +40,11 @@ modifica: la firma se agrega como una capa encima. Requisito: el PDF debe conser
 firmador_planos/
   firmar_planos.py
   preparar_firmas.py
-  firmar.bat
+  firmar.bat           <- doble clic para firmar
+  preparar_firmas.bat  <- doble clic para preparar las firmas desde escaneos
+  instalar.bat         <- lo llaman los anteriores (descarga Python la primera vez)
+  python/              <- Python portable (se crea solo)
+  escaneos/            <- escaneos o fotos de firmas (entrada de preparar_firmas)
   firmas/              <- un PNG por trabajador (no se sube al repositorio)
     A_CALLUPE.png
     C_COICA.png
@@ -46,9 +56,9 @@ firmador_planos/
 
 ## 1. Preparar las firmas (una sola vez)
 
-Ponga los escaneos o fotos de las firmas (JPG o PNG, en papel blanco) en una carpeta. Nombre cada
-archivo **como aparece el nombre en el cajetín**: `A. CALLUPE.jpg`, `C. COICA.png`, etc. Después
-ejecute:
+Copie los escaneos o fotos de las firmas (JPG o PNG, en papel blanco) en la carpeta `escaneos\`.
+Nombre cada archivo **como aparece el nombre en el cajetín**: `A. CALLUPE.jpg`, `C. COICA.png`, etc.
+Después haga doble clic en **`preparar_firmas.bat`**. Desde la terminal, el equivalente es:
 
 ```
 python preparar_firmas.py escaneos/ firmas/
@@ -71,8 +81,9 @@ iniciales que no salen de un nombre del cajetín (por ejemplo `JQ` o `EN`):
 
 ## 2. Firmar
 
-**Arrastrar y soltar:** arrastre una carpeta con planos (o varios PDF) sobre `firmar.bat`.
-Las firmas se toman de `firmas\` y los resultados quedan en `firmados\`.
+**Doble clic en `firmar.bat`:** se abre una ventana para elegir la carpeta con los planos.
+También puede arrastrar una carpeta o varios PDF sobre `firmar.bat`. Las firmas se toman de
+`firmas\`, los resultados quedan en `firmados\` y esa carpeta se abre al terminar.
 
 **Desde la terminal:**
 
