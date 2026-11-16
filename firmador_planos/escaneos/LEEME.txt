@@ -1,5 +1,0 @@
-Copie aqui los escaneos o fotos de las firmas (JPG o PNG, en papel blanco).
-Nombre cada archivo como figura en el cajetin del plano, por ejemplo:
-  A. CALLUPE.jpg
-  C. COICA.jpg
-Luego haga doble clic en preparar_firmas.bat: las firmas listas quedan en la carpeta "firmas".

@@ -1,14 +1,8 @@
 # Las firmas son datos personales: no se suben al repositorio.
-firmas/*
-!firmas/LEEME.txt
+firmas/
+firmados/
+python/
 *.png
-*_firmado.pdf
-__pycache__/
-escaneos/*
-!escaneos/LEEME.txt
-firmados/*
-!firmados/LEEME.txt
-informe_firmas.csv
 *.jpg
 *.jpeg
-python/
+*_firmado.pdf
