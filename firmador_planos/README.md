@@ -28,6 +28,7 @@ ni pide permisos de administrador. Si Windows muestra *"Windows protegió su PC"
   ```
   # persona del cajetín = archivo de firma
   A. CALLUPE = Armando.jpg
+  P. MINAYA = Firma Pilar.png
   # iniciales de la tabla de revisiones = persona
   JQ = J. QUISPE
   ```

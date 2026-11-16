@@ -190,6 +190,18 @@ def limpiar_firma(ruta: Path) -> Image.Image:
         rango = max(umbral - 40, 1)
         alfa = gris.point(lambda v: 0 if v >= umbral else min(255, int((umbral - v) * 255 / rango)))
     alfa = alfa.point(lambda v: 0 if v < 25 else v)   # quita motas tenues
+    # Firmas tenues: se refuerza la opacidad para que el trazo más fuerte quede opaco.
+    hist = alfa.histogram()
+    trazo = sum(hist[25:])
+    if trazo:
+        acumulado, fuerte = 0, 255
+        for nivel in range(255, 24, -1):                  # percentil 95 del trazo
+            acumulado += hist[nivel]
+            if acumulado >= trazo * 0.05:
+                fuerte = nivel
+                break
+        if fuerte < 230:
+            alfa = alfa.point(lambda v: min(255, round(v * 255 / fuerte)))
     img.putalpha(alfa)
     caja = alfa.getbbox()
     if caja is None:
