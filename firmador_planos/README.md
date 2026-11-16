@@ -6,8 +6,9 @@ lee los nombres del cajetín y coloca la firma de cada persona en sus casillas.
 ## Uso
 
 1. Ponga `firmar.bat` en una carpeta y, junto a él, una carpeta `firmas\` con una imagen por persona.
-2. Haga doble clic en `firmar.bat` y elija la carpeta con los planos. También puede arrastrar una
-   carpeta o varios PDF sobre el archivo.
+2. Haga doble clic en `firmar.bat`. En la ventana, **arrastre los PDF o la carpeta de planos**
+   (o pegue la ruta) y presione Enter. Puede firmar varios lotes seguidos; Enter sin nada para salir.
+   También puede arrastrar los PDF o la carpeta directamente sobre `firmar.bat`.
 3. El resultado queda en `firmados\` y esa carpeta se abre al terminar.
 
 La primera vez descarga un Python portable (unos 50 MB) en `python\`. No instala nada en Windows

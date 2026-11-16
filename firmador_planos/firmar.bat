@@ -3,8 +3,9 @@ r"""
 ===============================================================================
  FIRMADOR AUTOMATICO DE PLANOS  -  un solo archivo
 -------------------------------------------------------------------------------
- Uso:   doble clic en firmar.bat  -> elegir la carpeta con los planos PDF
-        (o arrastrar una carpeta / varios PDF sobre este archivo)
+ Uso:   doble clic en firmar.bat, arrastre a la ventana los PDF o la carpeta
+        (o pegue la ruta) y presione Enter.
+        Tambien puede arrastrar los PDF / la carpeta sobre este archivo.
 
  Carpetas junto a este archivo (se crean solas):
    firmas\     una imagen por persona (JPG/PNG, cualquier fondo claro).
@@ -31,19 +32,13 @@ set "PYTHONUTF8=1"
 
 call :instalar || goto :fin
 
-if "%~1"=="" goto :elegir
+rem Sin argumentos: el programa pide arrastrar o pegar las rutas en la ventana.
+if "%~1"=="" (
+  "%PY%" -x "%~f0"
+  exit /b
+)
 rem Rutas arrastradas sobre el archivo (fuera de un bloque por si llevan parentesis).
 "%PY%" -x "%~f0" %*
-goto :fin
-
-:elegir
-set "CARPETA="
-for /f "usebackq delims=" %%i in (`powershell -NoProfile -STA -Command "Add-Type -AssemblyName System.Windows.Forms; $d=New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description='Seleccione la carpeta con los planos PDF a firmar'; if ($d.ShowDialog() -eq 'OK') { $d.SelectedPath }"`) do set "CARPETA=%%i"
-if not defined CARPETA (
-  echo No se selecciono ninguna carpeta.
-  goto :fin
-)
-"%PY%" -x "%~f0" "%CARPETA%"
 
 :fin
 echo.
@@ -489,9 +484,6 @@ class Informe:
             "estado": estado,
         })
 
-    def faltantes(self) -> list[str]:
-        return sorted({f["persona"] for f in self.filas if f["estado"] == "falta firma"})
-
     def guardar(self, ruta: Path):
         ruta.parent.mkdir(parents=True, exist_ok=True)
         with open(ruta, "w", newline="", encoding="utf-8-sig") as f:   # utf-8-sig: Excel lee bien las tildes
@@ -619,39 +611,30 @@ def abrir_carpeta(ruta: Path):
         os.startfile(ruta)  # type: ignore[attr-defined]
 
 
-def main(argv: list[str] | None = None) -> int:
-    base = Path(sys.argv[0]).resolve().parent
-    ap = argparse.ArgumentParser(prog="firmar.bat", description="Firma automática de planos PDF.")
-    ap.add_argument("entradas", nargs="*", help="carpetas o PDFs a firmar")
-    ap.add_argument("--firmas", type=Path, default=base / "firmas", help="carpeta de imágenes de firma")
-    ap.add_argument("--salida", type=Path, default=base / "firmados", help="carpeta de salida")
-    ap.add_argument("--persona", action="append", metavar="NOMBRE",
-                    help='firmar solo las casillas de esta persona, p. ej. --persona "A. CALLUPE"')
-    ap.add_argument("--solo-cajetin", action="store_true", help="no firmar la tabla de revisiones")
-    ap.add_argument("--simular", action="store_true", help="solo informar, sin generar PDFs")
-    args = ap.parse_args(argv)
+def rutas_de_texto(linea: str) -> list[str]:
+    """Rutas arrastradas o pegadas en la consola.
 
-    args.firmas.mkdir(parents=True, exist_ok=True)
-    firmas = RegistroFirmas(args.firmas)
-    if not firmas.archivos:
-        print(f"No hay imágenes en la carpeta de firmas:\n  {args.firmas}\n"
-              "Copie ahí una imagen por persona, con nombre y apellido en el nombre del archivo\n"
-              '(p. ej. "Christopher Coica.jpg") y vuelva a ejecutar.')
-        abrir_carpeta(args.firmas)
-        return 2
-    if not args.entradas:
-        ap.print_help()
-        return 2
+    Windows pone entre comillas las rutas con espacios: "C:\\a b\\x.pdf" C:\\c.pdf
+    Una ruta pegada sin comillas (con espacios) se acepta si existe tal cual.
+    """
+    linea = linea.strip()
+    if not linea:
+        return []
+    if Path(linea.strip('"')).exists():
+        return [linea.strip('"')]
+    return [a or b for a, b in re.findall(r'"([^"]+)"|(\S+)', linea)]
 
-    salida = args.salida.resolve()
-    pdfs = recolectar(args.entradas, excluir=salida)
+
+def firmar_lote(entradas: list[str], firmas: RegistroFirmas, salida: Path, op: Opciones,
+                informe: Informe | None = None) -> int:
+    """Firma un lote. El informe se acumula si se pasa uno (modo interactivo)."""
+    pdfs = recolectar(entradas, excluir=salida)
     if not pdfs:
-        print("No se encontraron planos PDF.")
+        print("No se encontraron planos PDF en lo indicado.")
         return 2
 
-    op = Opciones(solo_cajetin=args.solo_cajetin, simular=args.simular,
-                  personas={normalizar(p) for p in args.persona} if args.persona else None)
-    informe = Informe()
+    informe = informe if informe is not None else Informe()
+    previas = len(informe.filas)
     firmados = 0
     for pdf, relativa in pdfs:
         print(f"\n== {relativa}")
@@ -669,14 +652,66 @@ def main(argv: list[str] | None = None) -> int:
 
     print("\n" + "=" * 70)
     print(f"{firmados}/{len(pdfs)} plano(s) {'revisados' if op.simular else 'firmados'} -> {salida}")
-    faltan = informe.faltantes()
+    faltan = sorted({f["persona"] for f in informe.filas[previas:] if f["estado"] == "falta firma"})
     if faltan:
         print("Faltan firmas de: " + ", ".join(faltan))
         print(f'Agregue la imagen en "firmas" o una línea en firmas\\{ARCHIVO_EQUIVALENCIAS}, p. ej.:')
         print(f"    {faltan[0]} = Nombre Apellido.png")
     print("Detalle en informe_firmas.csv; firmas reconocidas en revision_firmas.png")
-    abrir_carpeta(salida)
+    print("=" * 70)
     return 0 if firmados == len(pdfs) and not faltan else 1
+
+
+def modo_interactivo(firmas: RegistroFirmas, salida: Path, op: Opciones) -> int:
+    """Pide rutas en la consola hasta que se presione Enter sin escribir nada."""
+    resultado, hubo_lote, informe = 0, False, Informe()
+    while True:
+        print("\nArrastre aquí los PDF o la carpeta de planos (o pegue la ruta) y presione Enter.")
+        print("Enter sin nada para salir.")
+        try:
+            linea = input("> ")
+        except (EOFError, KeyboardInterrupt):
+            break
+        entradas = rutas_de_texto(linea)
+        if not entradas:
+            break
+        resultado = firmar_lote(entradas, firmas, salida, op, informe)
+        hubo_lote = True
+    if hubo_lote:
+        abrir_carpeta(salida)
+    return resultado
+
+
+def main(argv: list[str] | None = None) -> int:
+    base = Path(sys.argv[0]).resolve().parent
+    ap = argparse.ArgumentParser(prog="firmar.bat", description="Firma automática de planos PDF.")
+    ap.add_argument("entradas", nargs="*", help="carpetas o PDFs a firmar (sin nada: se piden en la ventana)")
+    ap.add_argument("--firmas", type=Path, default=base / "firmas", help="carpeta de imágenes de firma")
+    ap.add_argument("--salida", type=Path, default=base / "firmados", help="carpeta de salida")
+    ap.add_argument("--persona", action="append", metavar="NOMBRE",
+                    help='firmar solo las casillas de esta persona, p. ej. --persona "A. CALLUPE"')
+    ap.add_argument("--solo-cajetin", action="store_true", help="no firmar la tabla de revisiones")
+    ap.add_argument("--simular", action="store_true", help="solo informar, sin generar PDFs")
+    args = ap.parse_args(argv)
+
+    args.firmas.mkdir(parents=True, exist_ok=True)
+    firmas = RegistroFirmas(args.firmas)
+    if not firmas.archivos:
+        print(f"No hay imágenes en la carpeta de firmas:\n  {args.firmas}\n"
+              "Copie ahí una imagen por persona, con nombre y apellido en el nombre del archivo\n"
+              '(p. ej. "Christopher Coica.jpg") y vuelva a ejecutar.')
+        abrir_carpeta(args.firmas)
+        if not args.entradas:
+            input("Presione Enter para salir.")
+        return 2
+    salida = args.salida.resolve()
+    op = Opciones(solo_cajetin=args.solo_cajetin, simular=args.simular,
+                  personas={normalizar(p) for p in args.persona} if args.persona else None)
+    if not args.entradas:
+        return modo_interactivo(firmas, salida, op)
+    resultado = firmar_lote(args.entradas, firmas, salida, op)
+    abrir_carpeta(salida)
+    return resultado
 
 
 if __name__ == "__main__":
