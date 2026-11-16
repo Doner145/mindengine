@@ -14,7 +14,9 @@ title Preparar firmas
 call "%AQUI%instalar.bat" || (pause & exit /b 1)
 
 if not exist "%AQUI%escaneos\" mkdir "%AQUI%escaneos"
-dir /b "%AQUI%escaneos\*.*" >nul 2>&1 || (
+set "HAY="
+for %%f in ("%AQUI%escaneos\*.jpg" "%AQUI%escaneos\*.jpeg" "%AQUI%escaneos\*.png" "%AQUI%escaneos\*.tif" "%AQUI%escaneos\*.tiff" "%AQUI%escaneos\*.bmp") do set "HAY=1"
+if not defined HAY (
   echo Copie los escaneos o fotos de las firmas en:
   echo   %AQUI%escaneos
   echo Nombre cada archivo como figura en el cajetin, p. ej. "A. CALLUPE.jpg".

@@ -1,0 +1,4 @@
+Aqui van las firmas listas (PNG con fondo transparente), una por persona:
+  A_CALLUPE.png, C_COICA.png, ...
+Se generan solas con preparar_firmas.bat a partir de la carpeta "escaneos".
+Opcional: personas.json (ver README.md).
