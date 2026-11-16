@@ -6,8 +6,10 @@ Coloca las firmas en los planos PDF (cajetín Ausenco / Compañía Minera Ares, 
 
 1. **Cajetín de responsables** (DIBUJADO, REVISADO, DISEÑADO, DIS. APRO, PROY. APRO): a la izquierda del
    nombre, centrada en el hueco entre el cargo y el nombre (cruza la línea de la columna).
-2. **Tabla de revisiones**: para la revisión más reciente (la fila superior que no sea `.`), encima del
-   borde superior de la tabla, sobre las columnas POR, REV, ING y APRO según las iniciales de esa fila.
+2. **Tabla de revisiones**: para la revisión más reciente (la fila superior que no sea `.`), en las
+   columnas POR, REV, ING y APRO según las iniciales de esa fila:
+   - si encima de esa revisión hay una fila vacía (`.`), la firma va dentro de esa fila;
+   - si la revisión ocupa la primera fila de la tabla, la firma va encima del borde superior de la tabla.
    Las iniciales se deducen del nombre del cajetín: `C. COICA` → `CC`, `A. CALLUPE` → `AC`, `Y. SILVA` → `YS`.
 
 Las posiciones se calculan buscando el texto del PDF (no hay coordenadas fijas).

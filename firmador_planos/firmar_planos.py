@@ -6,9 +6,10 @@ Coloca la imagen de firma de cada persona en dos lugares:
 1. Cajetín de responsables (DIBUJADO, REVISADO, DISEÑADO, DIS. APRO,
    PROY. APRO): a la izquierda del nombre, centrada en el hueco entre el
    cargo y el nombre.
-2. Tabla de revisiones: para la revisión más reciente, encima del borde
-   superior de la tabla, sobre las columnas POR, REV, ING y APRO, según las
-   iniciales escritas en esa fila (CC -> C. COICA, AC -> A. CALLUPE, ...).
+2. Tabla de revisiones: para la revisión más reciente, en las columnas POR,
+   REV, ING y APRO según las iniciales escritas en esa fila (CC -> C. COICA,
+   AC -> A. CALLUPE, ...). La firma va en la fila vacía ("." ) justo encima de
+   esa revisión; si la revisión ocupa la primera fila, va encima de la tabla.
 
 Las posiciones se calculan buscando el texto del PDF, no con coordenadas
 fijas, así que tolera pequeños desplazamientos del cajetín.
@@ -44,6 +45,7 @@ NOMBRE_MARGEN = 1.5         # separación mínima con el cargo y con el nombre
 REV_ALTO_MAX = 10.0         # alto máximo de la firma sobre la tabla de revisiones
 REV_ANCHO_FRAC = 0.85       # ancho máximo como fracción del ancho de columna
 REV_SEPARACION = 3.0        # distancia entre la firma y el borde superior de la tabla
+REV_ALTO_FILA_FRAC = 0.8    # alto máximo dentro de una fila vacía de la tabla de revisiones
 TOL_LINEA = 4.0             # tolerancia vertical para "misma línea de texto"
 LARGO_MIN_LINEA = 20.0      # largo mínimo de un trazo para considerarlo línea de la grilla
 
@@ -189,7 +191,7 @@ def detectar_cajetin(nro: int, ws, hs) -> tuple[list[Ubicacion], dict[str, str]]
     return ubic, nombres
 
 
-def detectar_revision(nro: int, ws, vs, por_iniciales: dict[str, str]) -> tuple[list[Ubicacion], list[str]]:
+def detectar_revision(nro: int, ws, hs, vs, por_iniciales: dict[str, str]) -> tuple[list[Ubicacion], list[str]]:
     avisos: list[str] = []
     # La cabecera es el "POR" que comparte línea con "FECHA" (descarta "POR" de las notas).
     cab_por = [
@@ -242,10 +244,21 @@ def detectar_revision(nro: int, ws, vs, por_iniciales: dict[str, str]) -> tuple[
             avisos.append(f"rev {ultima['norm']}, columna {nombre_col}: iniciales '{ini}' sin persona asociada")
             continue
         ancho = (col.x1 - col.x0) * REV_ANCHO_FRAC
-        fondo = col.top - REV_SEPARACION
-        hueco = Caja(col.cx - ancho / 2, fondo - REV_ALTO_MAX, col.cx + ancho / 2, fondo)
-        u = Ubicacion(nro, "revision", f"{nombre_col} (rev {ultima['norm']})", persona, hueco, REV_ALTO_MAX)
-        u.anclar_abajo = True  # type: ignore[attr-defined]
+        etiqueta = f"{nombre_col} (rev {ultima['norm']})"
+        # Fila de la última revisión y, si existe, la fila (vacía) inmediatamente encima.
+        sup, _ = _limites_fila(hs, col.cx, ultima["cy"], alto_defecto=14.17)
+        if sup - col.top > 2:
+            sup_ant, _ = _limites_fila(hs, col.cx, sup - 2, alto_defecto=2 * (ultima["cy"] - sup))
+            sup_ant = max(sup_ant, col.top)
+            alto = min(REV_ALTO_MAX, REV_ALTO_FILA_FRAC * (sup - sup_ant))
+            hueco = Caja(col.cx - ancho / 2, sup_ant, col.cx + ancho / 2, sup)
+            u = Ubicacion(nro, "revision", etiqueta + " fila sup.", persona, hueco, alto)
+        else:
+            # La última revisión ocupa la primera fila: se firma encima de la tabla.
+            fondo = col.top - REV_SEPARACION
+            hueco = Caja(col.cx - ancho / 2, fondo - REV_ALTO_MAX, col.cx + ancho / 2, fondo)
+            u = Ubicacion(nro, "revision", etiqueta + " sobre tabla", persona, hueco, REV_ALTO_MAX)
+            u.anclar_abajo = True  # type: ignore[attr-defined]
         ubic.append(u)
     return ubic, avisos
 
@@ -284,7 +297,7 @@ def firmar(entrada: Path, salida: Path, firmas: Firmas, solo_cajetin: bool, dry_
             por_iniciales = {iniciales_de(n): n for n in nombres}
             por_iniciales.update(firmas.iniciales_extra())
             if not solo_cajetin:
-                rev, avisos = detectar_revision(nro, ws, vs, por_iniciales)
+                rev, avisos = detectar_revision(nro, ws, hs, vs, por_iniciales)
                 ubic += rev
                 for a in avisos:
                     print(f"  pág {nro + 1}: AVISO {a}")
