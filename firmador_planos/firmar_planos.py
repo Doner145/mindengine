@@ -21,6 +21,7 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import csv
 import io
 import json
 import re
@@ -282,7 +283,15 @@ def encajar(ubic: Ubicacion, img: ImageReader) -> Caja:
 # --------------------------------------------------------------------------- #
 # Proceso
 # --------------------------------------------------------------------------- #
-def firmar(entrada: Path, salida: Path, firmas: Firmas, solo_cajetin: bool, dry_run: bool) -> bool:
+def firmar(entrada: Path, salida: Path, firmas: Firmas, solo_cajetin: bool, dry_run: bool,
+           personas: set[str] | None = None, informe: list[dict] | None = None) -> bool:
+    """Firma un PDF. `personas` limita la firma a esas personas (None = todas)."""
+    informe = informe if informe is not None else []
+
+    def anotar(pag, zona, etiqueta, persona, estado):
+        informe.append({"plano": entrada.name, "pagina": pag, "zona": zona, "casilla": etiqueta,
+                        "persona": persona, "estado": estado})
+
     print(f"\n== {entrada.name}")
     planes: list[tuple[int, list[Ubicacion]]] = []
     hubo_firmas = False
@@ -293,6 +302,7 @@ def firmar(entrada: Path, salida: Path, firmas: Firmas, solo_cajetin: bool, dry_
             ubic, nombres = detectar_cajetin(nro, ws, hs)
             if not ubic:
                 print(f"  pág {nro + 1}: no se encontró el cajetín de responsables")
+                anotar(nro + 1, "", "", "", "sin cajetín")
                 continue
             por_iniciales = {iniciales_de(n): n for n in nombres}
             por_iniciales.update(firmas.iniciales_extra())
@@ -301,12 +311,17 @@ def firmar(entrada: Path, salida: Path, firmas: Firmas, solo_cajetin: bool, dry_
                 ubic += rev
                 for a in avisos:
                     print(f"  pág {nro + 1}: AVISO {a}")
+                    anotar(nro + 1, "revision", "", "", "aviso: " + a)
+            if personas is not None:
+                ubic = [u for u in ubic if u.persona in personas]
             for u in ubic:
                 u.ruta = firmas.ruta(u.persona)
                 if u.ruta is None:
                     print(f"  pág {nro + 1}: FALTA firma de {u.persona} "
                           f"(se esperaba {firmas.carpeta / archivo_por_defecto(u.persona)}) -> {u.etiqueta} sin firmar")
+                    anotar(nro + 1, u.zona, u.etiqueta, u.persona, "falta imagen de firma")
                     continue
+                anotar(nro + 1, u.zona, u.etiqueta, u.persona, "a firmar" if dry_run else "firmado")
                 u.caja_final = encajar(u, firmas.imagen(u.ruta))
                 c = u.caja_final
                 print(f"  pág {nro + 1}: {u.zona:8s} {u.etiqueta:16s} {u.persona:14s} "
@@ -351,14 +366,16 @@ def firmar(entrada: Path, salida: Path, firmas: Firmas, solo_cajetin: bool, dry_
     return True
 
 
-def recolectar(rutas: list[str]) -> list[Path]:
-    pdfs: list[Path] = []
+def recolectar(rutas: list[str]) -> list[tuple[Path, Path]]:
+    """Devuelve (pdf, ruta relativa) buscando también en subcarpetas."""
+    pdfs: list[tuple[Path, Path]] = []
     for r in rutas:
         p = Path(r)
         if p.is_dir():
-            pdfs += sorted(x for x in p.glob("*.pdf") if not x.stem.endswith("_firmado"))
+            pdfs += [(x, x.relative_to(p)) for x in sorted(p.rglob("*"))
+                     if x.suffix.lower() == ".pdf" and not x.stem.endswith("_firmado")]
         elif p.suffix.lower() == ".pdf" and p.exists():
-            pdfs.append(p)
+            pdfs.append((p, Path(p.name)))
         else:
             print(f"AVISO: se ignora {r}")
     return pdfs
@@ -371,6 +388,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--salida", type=Path, help="carpeta de salida (por defecto, junto al original)")
     ap.add_argument("--solo-cajetin", action="store_true", help="no firmar la tabla de revisiones")
     ap.add_argument("--dry-run", action="store_true", help="solo mostrar dónde se firmaría")
+    ap.add_argument("--persona", action="append", metavar="NOMBRE",
+                    help='firmar solo las casillas de esta persona, tal como figura en el cajetín '
+                         '(p. ej. --persona "A. CALLUPE"); se puede repetir')
+    ap.add_argument("--informe", type=Path,
+                    help="ruta del informe CSV (por defecto informe_firmas.csv en la carpeta de salida)")
     args = ap.parse_args(argv)
 
     if not args.firmas.is_dir():
@@ -379,15 +401,31 @@ def main(argv: list[str] | None = None) -> int:
     pdfs = recolectar(args.entradas)
     if not pdfs:
         ap.error("no se encontraron PDFs")
+    personas = {normalizar(p) for p in args.persona} if args.persona else None
+    informe: list[dict] = []
     ok = 0
-    for pdf in pdfs:
-        destino = (args.salida or pdf.parent) / f"{pdf.stem}_firmado.pdf"
+    for pdf, rel in pdfs:
+        destino = (args.salida / rel.parent if args.salida else pdf.parent) / f"{pdf.stem}_firmado.pdf"
         try:
-            ok += firmar(pdf, destino, firmas, args.solo_cajetin, args.dry_run)
+            ok += firmar(pdf, destino, firmas, args.solo_cajetin, args.dry_run, personas, informe)
         except Exception as e:  # sigue con el resto del lote
             print(f"  ERROR en {pdf.name}: {e}")
+            informe.append({"plano": pdf.name, "pagina": "", "zona": "", "casilla": "",
+                            "persona": "", "estado": f"error: {e}"})
+
+    ruta_informe = args.informe or (args.salida or Path(".")) / "informe_firmas.csv"
+    ruta_informe.parent.mkdir(parents=True, exist_ok=True)
+    with open(ruta_informe, "w", newline="", encoding="utf-8-sig") as f:  # utf-8-sig: Excel abre bien las tildes
+        w = csv.DictWriter(f, fieldnames=["plano", "pagina", "zona", "casilla", "persona", "estado"], delimiter=";")
+        w.writeheader()
+        w.writerows(informe)
+
+    faltan = sorted({r["persona"] for r in informe if r["estado"] == "falta imagen de firma"})
     print(f"\n{ok}/{len(pdfs)} plano(s) {'analizados' if args.dry_run else 'firmados'}")
-    return 0 if ok == len(pdfs) else 1
+    if faltan:
+        print("Faltan imágenes de firma de: " + ", ".join(faltan))
+    print(f"Informe: {ruta_informe}")
+    return 0 if ok == len(pdfs) and not faltan else 1
 
 
 if __name__ == "__main__":

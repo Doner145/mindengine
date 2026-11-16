@@ -3,3 +3,8 @@ firmas/
 *.png
 *_firmado.pdf
 __pycache__/
+escaneos/
+firmados/
+informe_firmas.csv
+*.jpg
+*.jpeg
