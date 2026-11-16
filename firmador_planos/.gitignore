@@ -1,0 +1,5 @@
+# Las firmas son datos personales: no se suben al repositorio.
+firmas/
+*.png
+*_firmado.pdf
+__pycache__/
