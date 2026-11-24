@@ -33,8 +33,10 @@ set "PYTHONUTF8=1"
 call :instalar || goto :fin
 
 rem Sin argumentos: el programa pide arrastrar o pegar las rutas en la ventana.
+rem Si el programa termina con error, la ventana queda abierta para leerlo.
 if "%~1"=="" (
   "%PY%" -x "%~f0"
+  if errorlevel 1 goto :fin
   exit /b
 )
 rem Rutas arrastradas sobre el archivo (fuera de un bloque por si llevan parentesis).
@@ -48,13 +50,18 @@ exit /b
 rem ---------------------------------------------------------------------------
 rem Prepara un Python portable en "python\" (solo la primera vez).
 rem No instala nada en Windows ni requiere permisos de administrador.
+rem Si la carpeta quedo incompleta (archivos borrados), la vuelve a crear.
 rem ---------------------------------------------------------------------------
 :instalar
 if exist "%PY%" (
   "%PY%" -c "import pdfplumber, pypdf, reportlab, PIL" >nul 2>&1 && exit /b 0
+  "%PY%" -c "pass" >nul 2>&1 || (
+    echo La carpeta "python" esta incompleta o danada: se vuelve a instalar.
+    rmdir /s /q "%AQUI%python"
+  )
 )
-echo Primera ejecucion: descargando Python %PYVER% portable y librerias (~50 MB).
-echo Esto se hace una sola vez.
+if exist "%AQUI%python\" if not exist "%PY%" rmdir /s /q "%AQUI%python"
+echo Preparando Python %PYVER% portable y librerias (~50 MB, solo la primera vez).
 echo.
 set "ARQ=amd64"
 if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "ARQ=arm64"
@@ -62,27 +69,39 @@ if /i "%PROCESSOR_ARCHITECTURE%"=="x86" if not defined PROCESSOR_ARCHITEW6432 se
 set "PS=powershell -NoProfile -ExecutionPolicy Bypass -Command $ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol='Tls12';"
 if not exist "%PY%" (
   echo [1/3] Python %PYVER% [%ARQ%]...
-  %PS% "$z=Join-Path $env:TEMP 'python-embed-firmador.zip'; Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/%PYVER%/python-%PYVER%-embed-%ARQ%.zip' -OutFile $z; Expand-Archive -Force -Path $z -DestinationPath '%AQUI%python'; Remove-Item $z; $f=Get-ChildItem '%AQUI%python\python*._pth' | Select-Object -First 1; (Get-Content $f.FullName) -replace '^#\s*import site','import site' | Set-Content $f.FullName" || goto :error_instalar
+  %PS% "$z=Join-Path $env:TEMP 'python-embed-firmador.zip'; Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/%PYVER%/python-%PYVER%-embed-%ARQ%.zip' -OutFile $z; Expand-Archive -Force -Path $z -DestinationPath '%AQUI%python'; Remove-Item $z; $f=Get-ChildItem '%AQUI%python\python*._pth' | Select-Object -First 1; (Get-Content $f.FullName) -replace '^#\s*import site','import site' | Set-Content $f.FullName" || goto :error_descarga
 )
-if not exist "%AQUI%python\Scripts\pip.exe" (
+"%PY%" -c "pass" >nul 2>&1 || goto :error_bloqueado
+"%PY%" -m pip --version >nul 2>&1 || (
   echo [2/3] pip...
-  %PS% "Invoke-WebRequest -UseBasicParsing -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile '%AQUI%python\get-pip.py'" || goto :error_instalar
-  "%PY%" "%AQUI%python\get-pip.py" --no-warn-script-location -q || goto :error_instalar
+  %PS% "Invoke-WebRequest -UseBasicParsing -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile '%AQUI%python\get-pip.py'" || goto :error_descarga
+  "%PY%" "%AQUI%python\get-pip.py" --no-warn-script-location -q || goto :error_descarga
 )
 echo [3/3] Librerias...
-"%PY%" -m pip install --no-warn-script-location --disable-pip-version-check -q %LIBS% || goto :error_instalar
-"%PY%" -c "import pdfplumber, pypdf, reportlab, PIL" || goto :error_instalar
+"%PY%" -m pip install --no-warn-script-location --disable-pip-version-check -q %LIBS% || goto :error_descarga
+"%PY%" -c "import pdfplumber, pypdf, reportlab, PIL" || goto :error_descarga
+rem Solo python.exe es necesario: se borran los demas ejecutables.
+del /q "%AQUI%python\pythonw.exe" "%AQUI%python\Scripts\*.exe" "%AQUI%python\get-pip.py" >nul 2>&1
 echo Instalacion lista.
 echo.
 exit /b 0
 
-:error_instalar
+:error_descarga
 echo.
-echo ERROR: no se pudo preparar Python.
+echo ERROR: no se pudo descargar o instalar Python.
 echo  - Revise la conexion a internet.
 echo  - Si hay proxy o bloqueo de descargas, pida acceso a www.python.org,
 echo    bootstrap.pypa.io, pypi.org y files.pythonhosted.org
 echo  - Para reintentar desde cero, borre la carpeta "python".
+exit /b 1
+
+:error_bloqueado
+echo.
+echo ERROR: Windows no permite ejecutar:
+echo   %PY%
+echo Suele ser el antivirus o una directiva de la empresa que bloquea
+echo programas fuera de "Archivos de programa". Pida a TI que autorice ese
+echo archivo, o mueva la carpeta del firmador a una ubicacion permitida.
 exit /b 1
 """
 # =============================================================================
