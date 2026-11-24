@@ -21,23 +21,32 @@ r"""
  Python y luego se ejecuta a si mismo con "python -x".
 ===============================================================================
 :inicio
-chcp 65001 >nul
+rem Se reabre dentro de una consola que no se cierra sola: si algo falla,
+rem el mensaje queda en pantalla.
+if "%FIRMADOR_CONSOLA%"=="1" goto :principal
+set "FIRMADOR_CONSOLA=1"
+cmd /k ""%~f0" %*"
+exit /b
+
+:principal
 title Firmador de planos
 set "AQUI=%~dp0"
 set "PY=%AQUI%python\python.exe"
 set "PYVER=3.12.7"
 set "LIBS=pdfplumber pypdf reportlab pillow"
-set "PYTHONIOENCODING=utf-8"
 set "PYTHONUTF8=1"
+echo Firmador de planos
+echo Carpeta: %AQUI%
+echo.
 
 call :instalar || goto :fin
 
+echo Iniciando el firmador...
 rem Sin argumentos: el programa pide arrastrar o pegar las rutas en la ventana.
-rem Si el programa termina con error, la ventana queda abierta para leerlo.
 if "%~1"=="" (
   "%PY%" -x "%~f0"
   if errorlevel 1 goto :fin
-  exit /b
+  exit
 )
 rem Rutas arrastradas sobre el archivo (fuera de un bloque por si llevan parentesis).
 "%PY%" -x "%~f0" %*
@@ -45,7 +54,7 @@ rem Rutas arrastradas sobre el archivo (fuera de un bloque por si llevan parente
 :fin
 echo.
 pause
-exit /b
+exit
 
 rem ---------------------------------------------------------------------------
 rem Prepara un Python portable en "python\" (solo la primera vez).
@@ -53,6 +62,7 @@ rem No instala nada en Windows ni requiere permisos de administrador.
 rem Si la carpeta quedo incompleta (archivos borrados), la vuelve a crear.
 rem ---------------------------------------------------------------------------
 :instalar
+echo Comprobando Python...
 if exist "%PY%" (
   "%PY%" -c "import pdfplumber, pypdf, reportlab, PIL" >nul 2>&1 && exit /b 0
   "%PY%" -c "pass" >nul 2>&1 || (
@@ -115,6 +125,7 @@ import io
 import os
 import re
 import sys
+import traceback
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
@@ -689,8 +700,11 @@ def modo_interactivo(firmas: RegistroFirmas, salida: Path, op: Opciones) -> int:
         print("Enter sin nada para salir.")
         try:
             linea = input("> ")
-        except (EOFError, KeyboardInterrupt):
+        except KeyboardInterrupt:
             break
+        except EOFError:
+            print("No se pudo leer lo escrito en la ventana.")
+            return 1
         entradas = rutas_de_texto(linea)
         if not entradas:
             break
@@ -734,4 +748,9 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception:
+        traceback.print_exc()
+        print("\nError inesperado. Envíe una captura de esta ventana.")
+        sys.exit(1)
